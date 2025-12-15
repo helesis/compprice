@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { api } from '../utils/api';
+
+// Get API URL for debugging
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Dashboard.css';
 
@@ -105,6 +109,7 @@ export default function Dashboard({ showToast }: DashboardProps) {
   const fetchHotels = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Fetching hotels from:', API_BASE_URL || process.env.REACT_APP_API_URL);
       const response = await api.get('/hotels');
       setHotels(response.data);
       setError(null);
@@ -114,12 +119,21 @@ export default function Dashboard({ showToast }: DashboardProps) {
       }
     } catch (err: any) {
       setError('Failed to load hotels');
+      const errorMsg = err?.response?.data?.error || err?.message || 'Backend\'e bağlanılamıyor';
+      
       if (showToast) {
-        const errorMsg = err?.response?.data?.error || err?.message || 'Backend\'e bağlanılamıyor';
         showToast(`❌ Oteller yüklenemedi: ${errorMsg}`, 'error');
       }
-      console.error('API Error:', err);
-      console.error('API URL:', process.env.REACT_APP_API_URL);
+      
+      // Detailed error logging
+      console.error('❌ Fetch Hotels Error:', {
+        message: err?.message,
+        code: err?.code,
+        response: err?.response?.data,
+        status: err?.response?.status,
+        apiUrl: process.env.REACT_APP_API_URL,
+        fullError: err
+      });
     } finally {
       setLoading(false);
     }

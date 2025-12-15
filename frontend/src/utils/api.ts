@@ -1,13 +1,63 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+
+// Log API URL on initialization
+console.log('🔗 API Base URL:', API_BASE_URL);
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 seconds timeout
 });
+
+// Request interceptor - log requests
+api.interceptors.request.use(
+  (config) => {
+    console.log('📤 API Request:', config.method?.toUpperCase(), config.url);
+    return config;
+  },
+  (error) => {
+    console.error('❌ Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor - log responses and handle errors
+api.interceptors.response.use(
+  (response) => {
+    console.log('✅ API Response:', response.config.url, response.status);
+    return response;
+  },
+  (error: AxiosError) => {
+    console.error('❌ API Error:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      message: error.message,
+      code: error.code,
+      baseURL: API_BASE_URL,
+    });
+
+    // Provide more detailed error messages
+    if (error.code === 'ECONNABORTED') {
+      error.message = 'Request timeout - Backend yanıt vermiyor';
+    } else if (error.code === 'ERR_NETWORK') {
+      error.message = 'Network Error - Backend\'e erişilemiyor. URL: ' + API_BASE_URL;
+    } else if (error.response) {
+      // Server responded with error status
+      error.message = error.response.data?.error || error.response.statusText || 'Server error';
+    } else if (error.request) {
+      // Request made but no response
+      error.message = 'No response from server - Backend çalışmıyor olabilir';
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // Hotels API
 export const hotelsAPI = {
