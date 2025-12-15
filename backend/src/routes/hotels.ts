@@ -48,7 +48,8 @@ router.post('/', async (req: Request, res: Response) => {
     await hotel.save();
 
     // Rakip otellerin fiyatlarını hemen scrape et (arka planda)
-    hotel.competitors.forEach((competitor) => {
+    const competitors = Array.isArray(hotel.competitors) ? hotel.competitors : [];
+    competitors.forEach((competitor: any) => {
       scrapeCompetitorPrice(hotel._id.toString(), competitor).catch((error) => {
         logger.error(`Failed to scrape ${competitor.url}: ${error.message}`);
       });

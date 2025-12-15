@@ -70,8 +70,8 @@ async function scrapeHotelPrices(hotelId: string, logger: Logger) {
   const competitorScraper = new CompetitorHotelScraper(logger);
 
   // Scrape from each competitor
-  const results = [];
-  const competitors = hotel.competitors || [];
+  const results: any[] = [];
+  const competitors = Array.isArray(hotel.competitors) ? hotel.competitors : [];
 
   if (competitors.length === 0) {
     logger.warn(`⚠️  Otel ${hotel.name || hotelId} için rakip bulunamadı`);

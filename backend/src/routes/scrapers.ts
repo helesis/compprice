@@ -24,9 +24,10 @@ router.post('/scrape/:hotelId', async (req: Request, res: Response) => {
     const expediaScraper = new ExpediaScraper(logger);
     const competitorScraper = new CompetitorHotelScraper(logger);
 
-    const results = [];
+    const results: any[] = [];
+    const competitors = Array.isArray(hotel.competitors) ? hotel.competitors : [];
 
-    for (const competitor of hotel.competitors || []) {
+    for (const competitor of competitors) {
       try {
         if (!competitor.url) {
           logger.warn(`Competitor URL is empty for platform ${competitor.platform}`);

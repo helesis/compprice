@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Price } from '../models/Price';
 
 const router = express.Router();
@@ -32,7 +33,7 @@ router.get('/comparison/:hotelId', async (req: Request, res: Response) => {
     const prices = await Price.aggregate([
       {
         $match: {
-          hotelId: require('mongoose').Types.ObjectId(req.params.hotelId),
+          hotelId: new mongoose.Types.ObjectId(req.params.hotelId),
         },
       },
       {
@@ -66,7 +67,7 @@ router.get('/trends/:hotelId', async (req: Request, res: Response) => {
     const { days = 30, platform } = req.query;
 
     const query: any = {
-      hotelId: require('mongoose').Types.ObjectId(req.params.hotelId),
+      hotelId: new mongoose.Types.ObjectId(req.params.hotelId),
       createdAt: {
         $gte: new Date(Date.now() - parseInt(days as string) * 24 * 60 * 60 * 1000),
       },
