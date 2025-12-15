@@ -1,0 +1,42 @@
+{
+  "hotels": [
+    {
+      "name": "Grand Plaza Hotel",
+      "address": "123 Main Street",
+      "city": "New York",
+      "country": "USA",
+      "rating": 4.5,
+      "competitors": [
+        {
+          "platform": "booking",
+          "url": "https://www.booking.com/hotel/us/grand-plaza-new-york.html",
+          "externalId": "booking_12345"
+        },
+        {
+          "platform": "expedia",
+          "url": "https://www.expedia.com/New-York-Hotels-Grand-Plaza.h123456.Hotel-Reviews.html",
+          "externalId": "expedia_67890"
+        }
+      ]
+    },
+    {
+      "name": "Sunset Resort",
+      "address": "456 Beach Avenue",
+      "city": "Los Angeles",
+      "country": "USA",
+      "rating": 4.2,
+      "competitors": [
+        {
+          "platform": "booking",
+          "url": "https://www.booking.com/hotel/us/sunset-resort-los-angeles.html",
+          "externalId": "booking_54321"
+        },
+        {
+          "platform": "expedia",
+          "url": "https://www.expedia.com/Los-Angeles-Hotels-Sunset-Resort.h654321.Hotel-Reviews.html",
+          "externalId": "expedia_09876"
+        }
+      ]
+    }
+  ]
+}
