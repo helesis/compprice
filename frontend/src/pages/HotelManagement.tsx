@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { api } from '../utils/api';
 import './HotelManagement.css';
 
 interface Competitor {
@@ -37,7 +38,7 @@ export default function HotelManagement({ showToast }: HotelManagementProps) {
   const fetchHotels = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:5001/api/hotels');
+      const response = await api.get('/hotels');
       setHotels(response.data);
     } catch (error) {
       console.error('Failed to fetch hotels:', error);
@@ -78,10 +79,10 @@ export default function HotelManagement({ showToast }: HotelManagementProps) {
     e.preventDefault();
     try {
       if (formData._id) {
-        await axios.put(`http://localhost:5001/api/hotels/${formData._id}`, formData);
+        await api.put(`/hotels/${formData._id}`, formData);
         if (showToast) showToast('✅ Otel güncellendi', 'success');
       } else {
-        await axios.post('http://localhost:5001/api/hotels', formData);
+        await api.post('/hotels', formData);
         if (showToast) showToast(`✅ ${formData.competitors.length} otel eklendi, scraping başlatıldı`, 'success');
       }
       setFormData({
@@ -90,20 +91,21 @@ export default function HotelManagement({ showToast }: HotelManagementProps) {
       setShowForm(false);
       fetchHotels();
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to save hotel';
+      const errorMessage = error?.response?.data?.error || error?.message || 'Network error - Backend\'e bağlanılamıyor';
       if (showToast) {
         showToast(`❌ Hata: ${errorMessage}`, 'error');
       } else {
         alert(`Failed to save hotel: ${errorMessage}`);
       }
       console.error('Error details:', error);
+      console.error('API URL:', process.env.REACT_APP_API_URL);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this hotel?')) {
       try {
-        await axios.delete(`http://localhost:5001/api/hotels/${id}`);
+        await api.delete(`/hotels/${id}`);
         if (showToast) showToast('✅ Otel silindi', 'success');
         fetchHotels();
       } catch (error) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { api } from '../utils/api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Dashboard.css';
 
@@ -63,9 +64,9 @@ export default function Dashboard({ showToast }: DashboardProps) {
   const checkScrapingStatus = async () => {
     if (hotels.length === 0) return;
     
-    hotels.forEach(async (hotel) => {
-      try {
-        const response = await axios.get(`http://localhost:5001/api/hotels/${hotel._id}`);
+      hotels.forEach(async (hotel) => {
+        try {
+          const response = await api.get(`/hotels/${hotel._id}`);
         const updatedHotel = response.data;
         
         // Son scraping zamanlarını kontrol et
@@ -104,19 +105,21 @@ export default function Dashboard({ showToast }: DashboardProps) {
   const fetchHotels = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:5001/api/hotels');
+      const response = await api.get('/hotels');
       setHotels(response.data);
       setError(null);
       
       if (showToast && response.data.length > 0) {
         showToast(`📊 ${response.data.length} otel yüklendi`, 'info');
       }
-    } catch (err) {
+    } catch (err: any) {
       setError('Failed to load hotels');
       if (showToast) {
-        showToast('❌ Oteller yüklenemedi', 'error');
+        const errorMsg = err?.response?.data?.error || err?.message || 'Backend\'e bağlanılamıyor';
+        showToast(`❌ Oteller yüklenemedi: ${errorMsg}`, 'error');
       }
-      console.error(err);
+      console.error('API Error:', err);
+      console.error('API URL:', process.env.REACT_APP_API_URL);
     } finally {
       setLoading(false);
     }
@@ -124,7 +127,7 @@ export default function Dashboard({ showToast }: DashboardProps) {
 
   const fetch2026Prices = async (hotelId: string) => {
     try {
-      const response = await axios.get(`http://localhost:5001/api/prices/year-2026/${hotelId}`);
+      const response = await api.get(`/prices/year-2026/${hotelId}`);
       setPrices2026((prev) => ({
         ...prev,
         [hotelId]: response.data,

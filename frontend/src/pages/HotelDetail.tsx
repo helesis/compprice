@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { api } from '../utils/api';
 import PriceChart from '../components/PriceChart';
 import './HotelDetail.css';
 
@@ -45,18 +46,23 @@ export default function HotelDetail({ showToast }: HotelDetailProps) {
       setLoading(true);
       
       const [hotelRes, pricesRes, comparisonRes] = await Promise.all([
-        axios.get(`http://localhost:5001/api/hotels/${hotelId}`),
-        axios.get(`http://localhost:5001/api/prices/hotel/${hotelId}?days=${days}`),
-        axios.get(`http://localhost:5001/api/prices/comparison/${hotelId}`),
+        api.get(`/hotels/${hotelId}`),
+        api.get(`/prices/hotel/${hotelId}?days=${days}`),
+        api.get(`/prices/comparison/${hotelId}`),
       ]);
 
       setHotel(hotelRes.data);
       setPrices(pricesRes.data);
       setComparison(comparisonRes.data);
       setError(null);
-    } catch (err) {
+    } catch (err: any) {
       setError('Failed to load hotel data');
-      console.error(err);
+      console.error('API Error:', err);
+      console.error('API URL:', process.env.REACT_APP_API_URL);
+      if (showToast) {
+        const errorMsg = err?.response?.data?.error || err?.message || 'Backend\'e bağlanılamıyor';
+        showToast(`❌ Veri yüklenemedi: ${errorMsg}`, 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -66,7 +72,7 @@ export default function HotelDetail({ showToast }: HotelDetailProps) {
     if (!id) return;
     try {
       if (showToast) showToast('🔄 Scraping başlatılıyor...', 'info');
-      const response = await axios.post(`http://localhost:5001/api/scrapers/scrape/${id}`);
+      const response = await api.post(`/scrapers/scrape/${id}`);
       
       const results = response.data.results || [];
       const successCount = results.filter((r: any) => r.price && !r.error).length;
@@ -83,12 +89,14 @@ export default function HotelDetail({ showToast }: HotelDetailProps) {
       setTimeout(() => {
         if (id) fetchHotelData(id);
       }, 2000);
-    } catch (err) {
+    } catch (err: any) {
       if (showToast) {
-        showToast('❌ Scraping başlatılamadı', 'error');
+        const errorMsg = err?.response?.data?.error || err?.message || 'Backend\'e bağlanılamıyor';
+        showToast(`❌ Scraping başlatılamadı: ${errorMsg}`, 'error');
       } else {
         alert('Failed to start scraping');
       }
+      console.error('Scraping error:', err);
     }
   };
 
