@@ -21,12 +21,24 @@ export class BaseScraper {
     this.retries = options.retries || 3;
   }
 
-  protected async fetchPage(url: string): Promise<string> {
+  protected async fetchPage(url: string, additionalHeaders?: Record<string, string>): Promise<string> {
     const config: AxiosRequestConfig = {
       headers: {
         'User-Agent': this.userAgent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0',
+        ...additionalHeaders,
       },
       timeout: this.timeout,
+      maxRedirects: 5,
+      validateStatus: (status) => status < 500, // 4xx hatalarını da yakala
     };
 
     let lastError: Error | null = null;
@@ -34,10 +46,25 @@ export class BaseScraper {
     for (let attempt = 1; attempt <= this.retries; attempt++) {
       try {
         const response = await axios.get(url, config);
+        
+        // 403 veya 4xx hatası kontrolü
+        if (response.status === 403 || response.status === 401) {
+          throw new Error(`Request failed with status code ${response.status} - Bot detection triggered`);
+        }
+        
+        if (response.status >= 400) {
+          throw new Error(`Request failed with status code ${response.status}`);
+        }
+        
         return response.data;
-      } catch (error) {
+      } catch (error: any) {
         lastError = error as Error;
-        this.logger.warn(`Fetch attempt ${attempt}/${this.retries} failed for ${url}: ${lastError.message}`);
+        const statusCode = error?.response?.status;
+        const errorMsg = statusCode 
+          ? `Request failed with status code ${statusCode}` 
+          : lastError.message;
+        
+        this.logger.warn(`Fetch attempt ${attempt}/${this.retries} failed for ${url}: ${errorMsg}`);
         
         if (attempt < this.retries) {
           // Exponential backoff

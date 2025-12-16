@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { api } from '../utils/api';
+import { api, scrapersAPI } from '../utils/api';
 import PriceChart from '../components/PriceChart';
 import './HotelDetail.css';
 
@@ -34,6 +34,7 @@ export default function HotelDetail({ showToast }: HotelDetailProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(30);
+  const [scrapingSeason, setScrapingSeason] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -100,6 +101,45 @@ export default function HotelDetail({ showToast }: HotelDetailProps) {
     }
   };
 
+  const handleScrapeSeason = async () => {
+    if (!id) return;
+    if (!window.confirm('2026 sezonu için haftalık fiyatları çekmek istediğinize emin misiniz? Bu işlem birkaç dakika sürebilir.')) {
+      return;
+    }
+
+    try {
+      setScrapingSeason(true);
+      if (showToast) showToast('🗓️ Sezon scraping başlatıldı...', 'info');
+      
+      const response = await scrapersAPI.scrapeSeason(id, {
+        year: 2026,
+        nights: 7,
+        intervalDays: 7,
+      });
+
+      if (showToast) {
+        showToast(
+          `✅ Sezon scraping tamamlandı: ${response.data.successCount}/${response.data.totalScraped} başarılı`,
+          'success'
+        );
+      }
+      
+      // Refresh data after a short delay
+      setTimeout(() => {
+        if (id) fetchHotelData(id);
+      }, 2000);
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.error || error?.message || 'Scraping hatası';
+      if (showToast) {
+        showToast(`❌ Sezon scraping hatası: ${errorMessage}`, 'error');
+      } else {
+        alert(`Failed to scrape season: ${errorMessage}`);
+      }
+    } finally {
+      setScrapingSeason(false);
+    }
+  };
+
   if (loading) return <div className="hotel-detail"><p>Loading...</p></div>;
   if (error) return <div className="hotel-detail error"><p>{error}</p></div>;
   if (!hotel) return <div className="hotel-detail"><p>Hotel not found</p></div>;
@@ -125,6 +165,16 @@ export default function HotelDetail({ showToast }: HotelDetailProps) {
         <button onClick={handleScrapeNow} className="btn btn-primary">
           Scrape Now
         </button>
+        {hotel.competitors?.some((c: any) => c.platform === 'etstur') && (
+          <button 
+            onClick={handleScrapeSeason} 
+            className="btn btn-secondary"
+            disabled={scrapingSeason}
+            title="2026 sezonu için haftalık fiyatları çek"
+          >
+            {scrapingSeason ? '⏳ Scraping...' : '🗓️ Sezon Scraping (2026)'}
+          </button>
+        )}
       </div>
 
       {comparison.length > 0 && (

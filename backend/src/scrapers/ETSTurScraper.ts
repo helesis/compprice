@@ -1,6 +1,8 @@
 import { BaseScraper } from './BaseScraper';
 import { Logger } from 'winston';
 import { HotelPrice } from './BookingScraper';
+import puppeteer, { Browser } from 'puppeteer';
+import * as cheerio from 'cheerio';
 
 export interface DateRange {
   checkin: string; // DD.MM.YYYY format
@@ -17,12 +19,57 @@ export interface SeasonScrapeOptions {
 }
 
 export class ETSTurScraper extends BaseScraper {
+  private browser: Browser | null = null;
+  private usePuppeteer: boolean = true; // Puppeteer kullanılacak mı?
+
   constructor(logger: Logger) {
     super(logger, {
-      timeout: 20000, // ETS Tur için daha uzun timeout
-      retries: 3,
+      timeout: 30000, // ETS Tur için daha uzun timeout (Puppeteer için)
+      retries: 2, // Puppeteer yavaş olabilir, retry sayısını azalt
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     });
+  }
+
+  /**
+   * Puppeteer browser'ı başlat (lazy initialization)
+   */
+  private async getBrowser(): Promise<Browser | null> {
+    if (!this.usePuppeteer) {
+      return null;
+    }
+
+    try {
+      if (!this.browser) {
+        this.logger.info('🚀 Puppeteer browser başlatılıyor...');
+        this.browser = await puppeteer.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--window-size=1920,1080',
+          ],
+        });
+        this.logger.info('✅ Puppeteer browser başlatıldı');
+      }
+      return this.browser;
+    } catch (error) {
+      this.logger.warn('⚠️  Puppeteer başlatılamadı, Cheerio kullanılacak:', (error as Error).message);
+      this.usePuppeteer = false;
+      return null;
+    }
+  }
+
+  /**
+   * Browser'ı kapat
+   */
+  async closeBrowser(): Promise<void> {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+    }
   }
 
   /**
@@ -51,45 +98,134 @@ export class ETSTurScraper extends BaseScraper {
       
       this.logger.info(`🌐 ETS Tur scraping: ${hotelName || url} (${dateRange.checkin} - ${dateRange.checkout})`);
 
-      const html = await this.fetchPage(fullUrl);
-      const $ = this.parseHTML(html);
+      let html: string;
+      let $: cheerio.CheerioAPI;
 
-      // ETS Tur için fiyat selector'ları (güncellenebilir)
+      // Önce Puppeteer ile dene (403 hatası için)
+      const browser = await this.getBrowser();
+      if (browser) {
+        try {
+          this.logger.info('🌐 Puppeteer ile sayfa yükleniyor...');
+          const page = await browser.newPage();
+          
+          // Gerçek tarayıcı gibi görünmek için
+          await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+          await page.setViewport({ width: 1920, height: 1080 });
+          
+          // Ekstra header'lar
+          await page.setExtraHTTPHeaders({
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          });
+
+          // Sayfayı yükle
+          await page.goto(fullUrl, {
+            waitUntil: 'networkidle2',
+            timeout: 30000,
+          });
+
+          // Sayfanın yüklenmesini bekle
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          // HTML'i al
+          html = await page.content();
+          await page.close();
+
+          this.logger.info('✅ Puppeteer ile sayfa yüklendi');
+        } catch (puppeteerError: any) {
+          this.logger.warn(`⚠️  Puppeteer hatası, Cheerio deneniyor: ${puppeteerError.message}`);
+          // Fallback: Cheerio ile dene
+          try {
+            html = await this.fetchPage(fullUrl);
+          } catch (cheerioError) {
+            throw new Error(`Both Puppeteer and Cheerio failed: ${(cheerioError as Error).message}`);
+          }
+        }
+      } else {
+        // Puppeteer yoksa Cheerio kullan
+        html = await this.fetchPage(fullUrl);
+      }
+
+      $ = this.parseHTML(html);
+
+      // ETS Tur için genişletilmiş fiyat selector'ları
       const priceSelectors = [
+        // ETS Tur spesifik selector'lar
+        '[data-testid*="price"]',
+        '[data-testid*="Price"]',
+        '.price',
+        '.Price',
         '.price-value',
+        '.priceValue',
         '.room-price',
-        '[class*="price"]',
+        '.roomPrice',
         '.hotel-price',
-        '[data-price]',
-        '.priceText',
+        '.hotelPrice',
+        '.total-price',
+        '.totalPrice',
+        '.final-price',
+        '.finalPrice',
         '.amount',
+        '.Amount',
+        '.priceText',
+        '.price-text',
+        '[class*="price"]',
         '[class*="Price"]',
         '[class*="fiyat"]',
-        '.price-amount',
-        '.total-price',
-        '.final-price',
+        '[class*="Fiyat"]',
+        '[class*="amount"]',
+        '[class*="Amount"]',
+        '[data-price]',
+        '[data-amount]',
+        // Genel selector'lar
         'span[class*="price"]',
         'div[class*="price"]',
+        'p[class*="price"]',
+        'span[class*="Price"]',
+        'div[class*="Price"]',
+        'span[class*="fiyat"]',
+        'div[class*="fiyat"]',
+        // Meta ve data attribute'lar
+        '[itemprop="price"]',
+        '[itemprop="priceCurrency"]',
+        'meta[property="product:price:amount"]',
+        // ETS Tur room card selector'ları
+        '.room-card .price',
+        '.roomCard .price',
+        '.room-item .price',
+        '.roomItem .price',
+        '.package-price',
+        '.packagePrice',
       ];
 
       let priceText = '';
       let priceNumeric: number | null = null;
+      let foundSelector = '';
 
       // Tüm selector'ları dene
       for (const selector of priceSelectors) {
         try {
-          const element = $(selector).first();
-          if (element.length > 0) {
-            priceText = element.text().trim();
-            
-            // TL veya ₺ içeriyorsa sayısal değeri çıkar
-            if (priceText && (priceText.includes('₺') || priceText.includes('TL') || /\d/.test(priceText))) {
-              priceNumeric = this.extractPrice(priceText);
-              if (priceNumeric && priceNumeric > 0) {
-                this.logger.info(`💰 Fiyat bulundu: ${priceNumeric} TL (selector: ${selector})`);
-                break;
+          const elements = $(selector);
+          if (elements.length > 0) {
+            // Tüm eşleşen elementleri kontrol et
+            for (let i = 0; i < Math.min(elements.length, 5); i++) {
+              const element = $(elements[i]);
+              priceText = element.text().trim();
+              
+              // Boş değilse ve sayı içeriyorsa
+              if (priceText && priceText.length > 0 && /\d/.test(priceText)) {
+                // TL, ₺ veya sayı içeriyorsa dene
+                if (priceText.includes('₺') || priceText.includes('TL') || priceText.includes('TRY') || /\d{3,}/.test(priceText)) {
+                  priceNumeric = this.extractPrice(priceText);
+                  if (priceNumeric && priceNumeric > 100) { // Minimum 100 TL (makul bir fiyat)
+                    foundSelector = selector;
+                    this.logger.info(`💰 Fiyat bulundu: ${priceNumeric.toLocaleString('tr-TR')} TL (selector: ${selector}, text: "${priceText.substring(0, 50)}")`);
+                    break;
+                  }
+                }
               }
             }
+            if (priceNumeric && priceNumeric > 100) break;
           }
         } catch (e) {
           // Selector bulunamadı, devam et
@@ -97,9 +233,38 @@ export class ETSTurScraper extends BaseScraper {
         }
       }
 
-      // Fiyat bulunamadıysa
+      // Eğer hala bulunamadıysa, tüm sayfada "TL" veya "₺" içeren elementleri ara
+      if (!priceNumeric || priceNumeric === 0) {
+        this.logger.warn(`⚠️  Standart selector'larla fiyat bulunamadı, genişletilmiş arama yapılıyor...`);
+        
+        // Tüm text içeriğinde fiyat ara
+        const allText = $('body').text();
+        const priceMatches = allText.match(/(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s*(?:TL|₺|TRY)/gi);
+        
+        if (priceMatches && priceMatches.length > 0) {
+          // En büyük sayıyı al (genellikle toplam fiyat)
+          const prices = priceMatches.map(match => {
+            const cleaned = match.replace(/[^\d,]/g, '').replace(',', '.');
+            return parseFloat(cleaned);
+          }).filter(p => !isNaN(p) && p > 100);
+          
+          if (prices.length > 0) {
+            priceNumeric = Math.max(...prices);
+            this.logger.info(`💰 Genişletilmiş aramada fiyat bulundu: ${priceNumeric.toLocaleString('tr-TR')} TL`);
+          }
+        }
+      }
+
+      // Fiyat bulunamadıysa debug bilgisi
       if (!priceNumeric || priceNumeric === 0) {
         this.logger.warn(`⚠️  Fiyat bulunamadı: ${hotelName || url} (${dateRange.checkin})`);
+        this.logger.debug(`🔍 URL: ${fullUrl}`);
+        this.logger.debug(`🔍 HTML uzunluğu: ${html.length} karakter`);
+        
+        // İlk 500 karakteri logla (debug için)
+        const htmlPreview = html.substring(0, 500).replace(/\s+/g, ' ');
+        this.logger.debug(`🔍 HTML önizleme: ${htmlPreview}...`);
+        
         return {
           platform: 'etstur',
           price: 0,
@@ -206,6 +371,9 @@ export class ETSTurScraper extends BaseScraper {
     const successCount = results.filter(r => r.price > 0).length;
     this.logger.info(`✅ Sezon scraping tamamlandı: ${successCount}/${results.length} başarılı`);
 
+    // Browser'ı kapat (memory tasarrufu için)
+    await this.closeBrowser();
+
     return results;
   }
 
@@ -225,24 +393,63 @@ export class ETSTurScraper extends BaseScraper {
   protected extractPrice(priceString: string): number | null {
     if (!priceString) return null;
 
-    // TL ve ₺ işaretlerini temizle
-    let cleaned = priceString
-      .replace(/₺/g, '')
-      .replace(/TL/g, '')
-      .replace(/TRY/g, '')
-      .replace(/\s/g, '')
-      .replace(/\./g, '') // Binlik ayırıcı noktaları kaldır
-      .replace(/,/g, '.'); // Ondalık ayırıcı virgülü noktaya çevir
-
-    // Sayıyı bul
-    const match = cleaned.match(/\d+(?:\.\d+)?/);
-    if (match) {
-      try {
-        return parseFloat(match[0]);
-      } catch {
-        return null;
+    // Önce tüm boşlukları temizle
+    let cleaned = priceString.trim().replace(/\s+/g, '');
+    
+    // TL, ₺, TRY işaretlerini kaldır
+    cleaned = cleaned.replace(/₺/g, '').replace(/TL/gi, '').replace(/TRY/gi, '');
+    
+    // Türkçe format: 35.000,50 veya 35.000
+    // Binlik ayırıcı nokta, ondalık ayırıcı virgül
+    if (cleaned.includes(',')) {
+      // Virgül varsa, ondalık ayırıcı olabilir
+      const parts = cleaned.split(',');
+      if (parts.length === 2) {
+        // Binlik noktaları kaldır, virgülü noktaya çevir
+        cleaned = parts[0].replace(/\./g, '') + '.' + parts[1];
+      } else {
+        // Sadece binlik ayırıcı olabilir
+        cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+      }
+    } else {
+      // Nokta varsa, binlik ayırıcı olabilir
+      if (cleaned.match(/\.\d{3}/)) {
+        // Binlik ayırıcı: 35.000 -> 35000
+        cleaned = cleaned.replace(/\./g, '');
+      } else if (cleaned.match(/\.\d{1,2}$/)) {
+        // Ondalık: 35000.50 -> 35000.50 (değiştirme)
+      } else {
+        // Tüm noktaları kaldır
+        cleaned = cleaned.replace(/\./g, '');
       }
     }
+
+    // Son temizlik: sadece sayı, nokta ve virgül kalsın
+    cleaned = cleaned.replace(/[^\d.,]/g, '');
+    
+    // Son virgülü noktaya çevir (eğer varsa)
+    cleaned = cleaned.replace(',', '.');
+
+    // Sayıyı bul (en büyük sayıyı al - genellikle toplam fiyat)
+    const matches = cleaned.match(/\d+(?:\.\d+)?/g);
+    if (matches && matches.length > 0) {
+      const numbers = matches.map(m => parseFloat(m)).filter(n => !isNaN(n) && n > 0);
+      if (numbers.length > 0) {
+        // En büyük sayıyı döndür (genellikle toplam fiyat)
+        return Math.max(...numbers);
+      }
+    }
+
+    // Eğer hiçbir şey bulunamadıysa, direkt parse et
+    try {
+      const parsed = parseFloat(cleaned);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    } catch {
+      // Parse hatası
+    }
+
     return null;
   }
 }
