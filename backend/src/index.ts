@@ -78,7 +78,14 @@ app.get('/api', (req: express.Request, res: express.Response) => {
   });
 });
 
-// MongoDB Connection
+// Start server first (even if MongoDB fails, server should be accessible)
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  logger.info(`🚀 Sunucu ${PORT} portunda çalışıyor`);
+  logger.info(`📍 Health check: http://localhost:${PORT}/health`);
+});
+
+// MongoDB Connection (non-blocking - server runs even if MongoDB fails)
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/compprice')
   .then(() => {
     logger.info('✅ MongoDB bağlantısı başarılı');
@@ -87,11 +94,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/compprice
   })
   .catch((err) => {
     logger.error('❌ MongoDB bağlantı hatası:', err);
+    logger.warn('⚠️  Server çalışıyor ama MongoDB olmadan bazı özellikler çalışmayabilir');
   });
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  logger.info(`🚀 Sunucu ${PORT} portunda çalışıyor`);
-});
 
 export default app;
