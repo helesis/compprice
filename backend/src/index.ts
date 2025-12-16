@@ -82,7 +82,9 @@ app.get('/api', (req: express.Request, res: express.Response) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   logger.info(`🚀 Sunucu ${PORT} portunda çalışıyor`);
-  logger.info(`📍 Health check: http://localhost:${PORT}/health`);
+  const serverUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  logger.info(`📍 Health check: ${serverUrl}/health`);
+  logger.info(`📍 API Base: ${serverUrl}/api`);
 });
 
 // MongoDB Connection (non-blocking - server runs even if MongoDB fails)
