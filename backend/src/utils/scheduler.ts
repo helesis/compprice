@@ -5,6 +5,7 @@ import { Price } from '../models/Price';
 import { BookingScraper } from '../scrapers/BookingScraper';
 import { ExpediaScraper } from '../scrapers/ExpediaScraper';
 import { CompetitorHotelScraper } from '../scrapers/CompetitorHotelScraper';
+import { ETSTurScraper } from '../scrapers/ETSTurScraper';
 
 export function startScheduler(logger: Logger) {
   // Test için: Her 5 dakikada bir çalış (production'da '0 * * * *' kullan - her saat başı)
@@ -68,6 +69,7 @@ async function scrapeHotelPrices(hotelId: string, logger: Logger) {
   const bookingScraper = new BookingScraper(logger);
   const expediaScraper = new ExpediaScraper(logger);
   const competitorScraper = new CompetitorHotelScraper(logger);
+  const etsturScraper = new ETSTurScraper(logger);
 
   // Scrape from each competitor
   const results: any[] = [];
@@ -95,6 +97,28 @@ async function scrapeHotelPrices(hotelId: string, logger: Logger) {
         scraperResult = await bookingScraper.scrapeHotelPrice(competitor.url || '');
       } else if (competitor.platform === 'expedia') {
         scraperResult = await expediaScraper.scrapeHotelPrice(competitor.url || '');
+      } else if (competitor.platform === 'etstur') {
+        // ETS Tur için tarih bazlı scraping (bugünden 7 gün sonra, 7 gece)
+        const checkinDate = new Date();
+        checkinDate.setDate(checkinDate.getDate() + 7);
+        const checkoutDate = new Date(checkinDate);
+        checkoutDate.setDate(checkoutDate.getDate() + 7);
+        
+        const day = String(checkinDate.getDate()).padStart(2, '0');
+        const month = String(checkinDate.getMonth() + 1).padStart(2, '0');
+        const year = checkinDate.getFullYear();
+        const checkinStr = `${day}.${month}.${year}`;
+        
+        const checkoutDay = String(checkoutDate.getDate()).padStart(2, '0');
+        const checkoutMonth = String(checkoutDate.getMonth() + 1).padStart(2, '0');
+        const checkoutYear = checkoutDate.getFullYear();
+        const checkoutStr = `${checkoutDay}.${checkoutMonth}.${checkoutYear}`;
+        
+        scraperResult = await etsturScraper.scrapeHotelPrice(
+          competitor.url,
+          { checkin: checkinStr, checkout: checkoutStr, nights: 7 },
+          competitor.name
+        );
       } else if (competitor.platform === 'competitor') {
         // Rakip otel direkt sitesi - auto scrape
         scraperResult = await competitorScraper.scrapeCompetitorHotel(
@@ -108,6 +132,8 @@ async function scrapeHotelPrices(hotelId: string, logger: Logger) {
         const price = new Price({
           hotelId: hotel._id,
           ...scraperResult,
+          checkInDate: scraperResult.checkin ? parseDateTR(scraperResult.checkin) : undefined,
+          checkOutDate: scraperResult.checkout ? parseDateTR(scraperResult.checkout) : undefined,
           scrapedAt: new Date(),
         });
 
@@ -127,7 +153,7 @@ async function scrapeHotelPrices(hotelId: string, logger: Logger) {
           }
         );
 
-        logger.info(`💰 ${competitor.name || competitor.platform}: $${scraperResult.price} kaydedildi`);
+        logger.info(`💰 ${competitor.name || competitor.platform}: ${scraperResult.price.toLocaleString('tr-TR')} ${scraperResult.currency || 'TL'} kaydedildi`);
         results.push(scraperResult);
       } else {
         logger.warn(`⚠️  ${competitor.name || competitor.platform}: Fiyat bulunamadı veya geçersiz`);
@@ -138,4 +164,10 @@ async function scrapeHotelPrices(hotelId: string, logger: Logger) {
   }
 
   return results;
+}
+
+// Helper function: DD.MM.YYYY formatını Date'e çevir
+function parseDateTR(dateStr: string): Date {
+  const [day, month, year] = dateStr.split('.');
+  return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
 }

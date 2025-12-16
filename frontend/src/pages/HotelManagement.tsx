@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { api } from '../utils/api';
+import { api, scrapersAPI } from '../utils/api';
 import './HotelManagement.css';
 
 interface Competitor {
   _id?: string;
   name: string;
   url: string;
-  platform?: string;
+  platform?: 'booking' | 'expedia' | 'airbnb' | 'agoda' | 'hotels.com' | 'competitor' | 'etstur';
 }
 
 interface Hotel {
@@ -30,6 +30,7 @@ export default function HotelManagement({ showToast }: HotelManagementProps) {
     competitors: [],
   });
   const [loading, setLoading] = useState(true);
+  const [scrapingSeason, setScrapingSeason] = useState<string | null>(null);
 
   useEffect(() => {
     fetchHotels();
@@ -118,6 +119,40 @@ export default function HotelManagement({ showToast }: HotelManagementProps) {
     }
   };
 
+  const handleScrapeSeason = async (hotelId: string) => {
+    if (!window.confirm('2026 sezonu için haftalık fiyatları çekmek istediğinize emin misiniz? Bu işlem birkaç dakika sürebilir.')) {
+      return;
+    }
+
+    try {
+      setScrapingSeason(hotelId);
+      if (showToast) showToast('🗓️ Sezon scraping başlatıldı...', 'info');
+      
+      const response = await scrapersAPI.scrapeSeason(hotelId, {
+        year: 2026,
+        nights: 7,
+        intervalDays: 7,
+      });
+
+      if (showToast) {
+        showToast(
+          `✅ Sezon scraping tamamlandı: ${response.data.successCount}/${response.data.totalScraped} başarılı`,
+          'success'
+        );
+      }
+      fetchHotels();
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.error || error?.message || 'Scraping hatası';
+      if (showToast) {
+        showToast(`❌ Sezon scraping hatası: ${errorMessage}`, 'error');
+      } else {
+        alert(`Failed to scrape season: ${errorMessage}`);
+      }
+    } finally {
+      setScrapingSeason(null);
+    }
+  };
+
   if (loading) return <div className="hotel-management"><p>Loading...</p></div>;
 
   return (
@@ -162,16 +197,41 @@ export default function HotelManagement({ showToast }: HotelManagementProps) {
                 </div>
 
                 <div className="form-group">
-                  <label>Rakip Otel Web Sitesi URL'si</label>
+                  <label>Platform</label>
+                  <select
+                    value={competitor.platform || 'competitor'}
+                    onChange={(e) => handleCompetitorChange(index, 'platform', e.target.value)}
+                    style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
+                  >
+                    <option value="competitor">Genel Otel Sitesi</option>
+                    <option value="etstur">ETS Tur</option>
+                    <option value="booking">Booking.com</option>
+                    <option value="expedia">Expedia</option>
+                    <option value="airbnb">Airbnb</option>
+                    <option value="agoda">Agoda</option>
+                    <option value="hotels.com">Hotels.com</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>
+                    {competitor.platform === 'etstur' ? 'ETS Tur Otel URL' : 'Otel Web Sitesi URL'}
+                  </label>
                   <input
                     type="url"
                     value={competitor.url}
                     onChange={(e) => handleCompetitorChange(index, 'url', e.target.value)}
-                    placeholder="https://example-hotel.com"
+                    placeholder={
+                      competitor.platform === 'etstur'
+                        ? "https://www.etstur.com/otel/rixos-premium-belek"
+                        : "https://example-hotel.com"
+                    }
                     required
                   />
                   <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-                    URL'den otomatik olarak güncel fiyat bilgisi çekilecek
+                    {competitor.platform === 'etstur'
+                      ? 'ETS Tur otel sayfası URL\'si (tarih parametreleri otomatik eklenecek)'
+                      : 'URL\'den otomatik olarak güncel fiyat bilgisi çekilecek'}
                   </small>
                 </div>
               </div>
@@ -213,12 +273,24 @@ export default function HotelManagement({ showToast }: HotelManagementProps) {
                   <td>{hotel.rating ? `${hotel.rating.toFixed(1)}` : 'N/A'}</td>
                   <td>{hotel.competitors?.length || 0}</td>
                   <td>
-                    <button 
-                      onClick={() => handleDelete(hotel._id || '')}
-                      className="btn btn-danger btn-small"
-                    >
-                      Delete
-                    </button>
+                    <div style={{ display: 'flex', gap: '5px' }}>
+                      {hotel.competitors?.some(c => c.platform === 'etstur') && (
+                        <button
+                          onClick={() => handleScrapeSeason(hotel._id || '')}
+                          className="btn btn-secondary btn-small"
+                          disabled={scrapingSeason === hotel._id}
+                          title="2026 sezonu için haftalık fiyatları çek"
+                        >
+                          {scrapingSeason === hotel._id ? '⏳ Scraping...' : '🗓️ Sezon Scraping'}
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleDelete(hotel._id || '')}
+                        className="btn btn-danger btn-small"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

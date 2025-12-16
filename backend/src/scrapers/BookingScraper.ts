@@ -9,6 +9,8 @@ export interface HotelPrice {
   availability: boolean;
   rating?: number;
   reviews?: number;
+  checkin?: string; // DD.MM.YYYY format for date-based scraping
+  checkout?: string; // DD.MM.YYYY format for date-based scraping
 }
 
 export class BookingScraper extends BaseScraper {

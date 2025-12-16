@@ -84,5 +84,9 @@ export const pricesAPI = {
 export const scrapersAPI = {
   scrapeHotel: (hotelId: string) =>
     api.post(`/scrapers/scrape/${hotelId}`),
+  scrapeSeason: (hotelId: string, options: { year?: number; nights?: number; intervalDays?: number }) =>
+    api.post(`/scrapers/scrape-season/${hotelId}`, options),
+  scrapeETSTur: (hotelId: string, dates: { checkin: string; checkout: string; nights?: number }) =>
+    api.post(`/scrapers/scrape-etstur/${hotelId}`, dates),
   getStatus: () => api.get('/scrapers/status'),
 };

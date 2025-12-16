@@ -8,7 +8,7 @@ const priceSchema = new mongoose.Schema({
   },
   platform: {
     type: String,
-    enum: ['booking', 'airbnb', 'expedia', 'agoda', 'hotels.com', 'competitor'],
+    enum: ['booking', 'airbnb', 'expedia', 'agoda', 'hotels.com', 'competitor', 'etstur'],
     required: true,
   },
   roomType: String,

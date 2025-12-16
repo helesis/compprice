@@ -26,7 +26,7 @@ const hotelSchema = new mongoose.Schema({
       },
       platform: {
         type: String,
-        enum: ['booking', 'expedia', 'airbnb', 'agoda', 'hotels.com', 'competitor'],
+        enum: ['booking', 'expedia', 'airbnb', 'agoda', 'hotels.com', 'competitor', 'etstur'],
         default: 'competitor',
       },
       externalId: String,
