@@ -35,13 +35,16 @@ export class ETSTurScraper extends BaseScraper {
    */
   private async getBrowser(): Promise<Browser | null> {
     if (!this.usePuppeteer) {
+      this.logger.info('ℹ️  Puppeteer devre dışı, Cheerio kullanılacak');
       return null;
     }
 
     try {
       if (!this.browser) {
         this.logger.info('🚀 Puppeteer browser başlatılıyor...');
-        this.browser = await puppeteer.launch({
+        
+        // Render için özel ayarlar
+        const launchOptions: any = {
           headless: true,
           args: [
             '--no-sandbox',
@@ -49,14 +52,50 @@ export class ETSTurScraper extends BaseScraper {
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--disable-extensions',
             '--window-size=1920,1080',
+            '--single-process', // Render için önemli
           ],
-        });
+        };
+
+        // Render'da Chrome binary path'i
+        if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+          launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+          this.logger.info(`🔧 Custom Chrome path kullanılıyor: ${launchOptions.executablePath}`);
+        } else {
+          // Render'da genellikle bu path'lerden biri çalışır
+          const possiblePaths = [
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+          ];
+          
+          for (const path of possiblePaths) {
+            try {
+              const fs = require('fs');
+              if (fs.existsSync(path)) {
+                launchOptions.executablePath = path;
+                this.logger.info(`🔧 Chrome bulundu: ${path}`);
+                break;
+              }
+            } catch {
+              // Devam et
+            }
+          }
+        }
+
+        this.browser = await puppeteer.launch(launchOptions);
         this.logger.info('✅ Puppeteer browser başlatıldı');
       }
       return this.browser;
-    } catch (error) {
-      this.logger.warn('⚠️  Puppeteer başlatılamadı, Cheerio kullanılacak:', (error as Error).message);
+    } catch (error: any) {
+      this.logger.error('❌ Puppeteer başlatılamadı:', {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+      });
+      this.logger.warn('⚠️  Cheerio kullanılacak (403 hatası alınabilir)');
       this.usePuppeteer = false;
       return null;
     }
@@ -105,7 +144,7 @@ export class ETSTurScraper extends BaseScraper {
       const browser = await this.getBrowser();
       if (browser) {
         try {
-          this.logger.info('🌐 Puppeteer ile sayfa yükleniyor...');
+          this.logger.info(`🌐 Puppeteer ile sayfa yükleniyor: ${fullUrl.substring(0, 80)}...`);
           const page = await browser.newPage();
           
           // Gerçek tarayıcı gibi görünmek için
@@ -116,33 +155,46 @@ export class ETSTurScraper extends BaseScraper {
           await page.setExtraHTTPHeaders({
             'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Referer': 'https://www.etstur.com/',
+            'Origin': 'https://www.etstur.com',
           });
 
           // Sayfayı yükle
-          await page.goto(fullUrl, {
+          const response = await page.goto(fullUrl, {
             waitUntil: 'networkidle2',
             timeout: 30000,
           });
 
+          // Response status kontrolü
+          if (response && response.status() >= 400) {
+            throw new Error(`Puppeteer: HTTP ${response.status()} - ${response.statusText()}`);
+          }
+
           // Sayfanın yüklenmesini bekle
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 3000));
 
           // HTML'i al
           html = await page.content();
           await page.close();
 
-          this.logger.info('✅ Puppeteer ile sayfa yüklendi');
+          this.logger.info(`✅ Puppeteer ile sayfa yüklendi (${html.length} karakter)`);
         } catch (puppeteerError: any) {
-          this.logger.warn(`⚠️  Puppeteer hatası, Cheerio deneniyor: ${puppeteerError.message}`);
+          this.logger.error(`❌ Puppeteer hatası: ${puppeteerError.message}`);
+          this.logger.warn(`⚠️  Cheerio deneniyor (403 hatası alınabilir)...`);
           // Fallback: Cheerio ile dene
           try {
             html = await this.fetchPage(fullUrl);
-          } catch (cheerioError) {
-            throw new Error(`Both Puppeteer and Cheerio failed: ${(cheerioError as Error).message}`);
+            this.logger.warn(`⚠️  Cheerio kullanıldı - 403 hatası alınabilir`);
+          } catch (cheerioError: any) {
+            const errorMsg = cheerioError?.response?.status === 403
+              ? '403 Forbidden - Bot detection. Puppeteer gerekli ama başlatılamadı.'
+              : `Both Puppeteer and Cheerio failed: ${(cheerioError as Error).message}`;
+            throw new Error(errorMsg);
           }
         }
       } else {
         // Puppeteer yoksa Cheerio kullan
+        this.logger.warn('⚠️  Puppeteer kullanılamıyor, Cheerio ile deneniyor (403 hatası alınabilir)...');
         html = await this.fetchPage(fullUrl);
       }
 
