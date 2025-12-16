@@ -86,15 +86,25 @@ app.listen(PORT, () => {
 });
 
 // MongoDB Connection (non-blocking - server runs even if MongoDB fails)
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/compprice')
-  .then(() => {
-    logger.info('✅ MongoDB bağlantısı başarılı');
-    // Start scheduler AFTER MongoDB connection is established
-    startScheduler(logger);
-  })
-  .catch((err) => {
-    logger.error('❌ MongoDB bağlantı hatası:', err);
-    logger.warn('⚠️  Server çalışıyor ama MongoDB olmadan bazı özellikler çalışmayabilir');
-  });
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+  logger.error('❌ MONGODB_URI environment variable tanımlı değil!');
+  logger.warn('⚠️  Server çalışıyor ama MongoDB olmadan bazı özellikler çalışmayabilir');
+} else if (!mongoUri.startsWith('mongodb://') && !mongoUri.startsWith('mongodb+srv://')) {
+  logger.error(`❌ MONGODB_URI geçersiz format! 'mongodb://' veya 'mongodb+srv://' ile başlamalı`);
+  logger.error(`❌ Mevcut değer: ${mongoUri.substring(0, 20)}...`);
+  logger.warn('⚠️  Server çalışıyor ama MongoDB olmadan bazı özellikler çalışmayabilir');
+} else {
+  mongoose.connect(mongoUri)
+    .then(() => {
+      logger.info('✅ MongoDB bağlantısı başarılı');
+      // Start scheduler AFTER MongoDB connection is established
+      startScheduler(logger);
+    })
+    .catch((err) => {
+      logger.error('❌ MongoDB bağlantı hatası:', err);
+      logger.warn('⚠️  Server çalışıyor ama MongoDB olmadan bazı özellikler çalışmayabilir');
+    });
+}
 
 export default app;
