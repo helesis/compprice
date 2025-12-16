@@ -49,7 +49,8 @@ api.interceptors.response.use(
       error.message = 'Network Error - Backend\'e erişilemiyor. URL: ' + API_BASE_URL;
     } else if (error.response) {
       // Server responded with error status
-      error.message = error.response.data?.error || error.response.statusText || 'Server error';
+      const responseData = error.response.data as { error?: string } | undefined;
+      error.message = responseData?.error || error.response.statusText || 'Server error';
     } else if (error.request) {
       // Request made but no response
       error.message = 'No response from server - Backend çalışmıyor olabilir';
