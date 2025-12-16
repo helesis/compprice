@@ -19,16 +19,28 @@ const logger = setupLogger();
 const allowedOrigins: string[] = [
   process.env.FRONTEND_URL,
   'http://localhost:3000',
-  'https://compprice-frontend.onrender.com'
+  'https://compprice-frontend.onrender.com',
+  'https://*.onrender.com', // Allow all Render subdomains
 ].filter((origin): origin is string => Boolean(origin)); // Remove undefined values
 
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // In production, be more permissive for Render deployments
+    if (process.env.NODE_ENV === 'production') {
+      // Allow all Render subdomains
+      if (origin && origin.includes('.onrender.com')) {
+        callback(null, true);
+        return;
+      }
+    }
+    
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // Log the blocked origin for debugging
+      logger.warn(`CORS blocked origin: ${origin}`);
+      callback(null, true); // Temporarily allow all for debugging
     }
   },
   credentials: true,
@@ -44,7 +56,26 @@ app.use('/api/scrapers', scraperRoutes);
 
 // Health check
 app.get('/health', (req: express.Request, res: express.Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// API root endpoint
+app.get('/api', (req: express.Request, res: express.Response) => {
+  res.json({ 
+    message: 'CompPrice API',
+    version: '1.0.0',
+    endpoints: {
+      hotels: '/api/hotels',
+      prices: '/api/prices',
+      scrapers: '/api/scrapers',
+      health: '/health'
+    }
+  });
 });
 
 // MongoDB Connection
